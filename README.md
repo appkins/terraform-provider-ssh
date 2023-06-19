@@ -19,7 +19,6 @@ Retrieves metadata from the remote host and makes it available in terraform stat
 - Resource for Shell Scripts
 - Resource for Applying Cloud Init via SSH
 
-
 ## Overview
 
 This is a Terraform provider to copy files, run commands remotely and capture results via SSH. Unlike the Terraform provisioners which are described as
