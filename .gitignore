@@ -9,3 +9,5 @@ terraform-provider-ssh
 build/
 dist/
 .idea/
+terraform.auto.tfvars
+.terraform*

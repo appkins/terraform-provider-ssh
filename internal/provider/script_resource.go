@@ -32,10 +32,10 @@ type ScriptResourceModel struct {
 	Triggers   types.Map    `tfsdk:"triggers"`
 	Timeout    types.String `tfsdk:"timeout"`
 	RetryDelay types.String `tfsdk:"retry_delay"`
-	Connect    types.Set    `tfsdk:"connect"`
-	Query      types.Set    `tfsdk:"query"`
-	Script     types.Set    `tfsdk:"script"`
-	Exec       []struct {
+	//Connect    types.Set    `tfsdk:"connect"`
+	//Query      types.Set    `tfsdk:"query"`
+	//Script     types.Set    `tfsdk:"script"`
+	Exec []struct {
 		Commands  []types.String `tfsdk:"commands"`
 		Lifecycle types.String   `tfsdk:"lifecycle"`
 	} `tfsdk:"exec"`

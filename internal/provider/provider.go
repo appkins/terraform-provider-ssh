@@ -34,7 +34,7 @@ func New() provider.Provider {
 type frameworkProvider struct{}
 
 func (p *frameworkProvider) Metadata(_ context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
-	resp.TypeName = "framework"
+	resp.TypeName = "ssh"
 }
 
 func (p *frameworkProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
