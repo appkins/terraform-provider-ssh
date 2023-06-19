@@ -1,0 +1,39 @@
+name: linter
+
+on:
+  push:
+    tags:
+      - v*
+    branches:
+      - master
+      - main
+  pull_request:
+jobs:
+  golangci:
+    name: golint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v2
+        with:
+          # Optional: version of golangci-lint to use in form of v1.2 or v1.2.3 or `latest` to use the latest version
+          version: latest
+          args: --timeout 5m0s
+  tfproviderlint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: bflad/tfproviderlint-github-action@master
+      with:
+        args: ./...
+  markdown:
+    name: markdownlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DavidAnson/markdownlint-cli2-action@v3
+        with:
+          globs: |
+            docs/*.md
+            docs/resources/*.md
