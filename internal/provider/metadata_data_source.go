@@ -24,18 +24,20 @@ type MetadataDataSource struct {
 	factory *remote.ProvisionerFactory
 }
 
+type MetadataOs struct {
+	Name    types.String `tfsdk:"name"`
+	Version types.String `tfsdk:"version"`
+	Family  types.String `tfsdk:"family"`
+}
+
 // MetadataDataSourceModel describes the data source data model.
 type MetadataDataSourceModel struct {
 	Ssh         *SshConfig     `tfsdk:"ssh"`
 	HostName    types.String   `tfsdk:"hostname"`
 	IpAddress   types.String   `tfsdk:"ip_address"`
 	IpAddresses []types.String `tfsdk:"ip_addresses"`
-	Os          struct {
-		Name    types.String `tfsdk:"name"`
-		Version types.String `tfsdk:"version"`
-		Family  types.String `tfsdk:"family"`
-	} `tfsdk:"os"`
-	Raw types.String `tfsdk:"raw"`
+	Os          *MetadataOs    `tfsdk:"os"`
+	Raw         types.String   `tfsdk:"raw"`
 }
 
 func (d *MetadataDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -71,14 +73,17 @@ func (d *MetadataDataSource) Schema(ctx context.Context, req datasource.SchemaRe
 				Attributes: map[string]schema.Attribute{
 					"name": schema.StringAttribute{
 						MarkdownDescription: "Operating system name",
+						Optional:            true,
 						Computed:            true,
 					},
 					"version": schema.StringAttribute{
 						MarkdownDescription: "Operating system version",
+						Optional:            true,
 						Computed:            true,
 					},
 					"family": schema.StringAttribute{
 						MarkdownDescription: "Operating system family",
+						Optional:            true,
 						Computed:            true,
 					},
 				},
@@ -176,7 +181,13 @@ func (d *MetadataDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	} else {
 		rawb := new(strings.Builder)
-		for i, line := range stdOut {
+		var sani []string
+		if stdOut[len(stdOut)-1] == "" {
+			sani = stdOut[:len(stdOut)-1]
+		} else {
+			sani = stdOut
+		}
+		for i, line := range sani {
 			rawb.WriteString(line)
 			switch i {
 			case 0:
@@ -204,6 +215,9 @@ func (d *MetadataDataSource) Read(ctx context.Context, req datasource.ReadReques
 						break
 					}
 					if strings.Contains(line, "\n") {
+						if data.Os == nil {
+							data.Os = new(MetadataOs)
+						}
 						for ii, l := range strings.Split(line, "\n") {
 							switch ii {
 							case 0:

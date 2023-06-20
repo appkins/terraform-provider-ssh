@@ -15,7 +15,7 @@ import (
  * The SSH client is used to execute commands on the remote host.
  * The retry delay is used to determine how long to wait before retrying a failed command.
  */
-func (p *Provisioner) Execute(ctx context.Context, commands   []string) ([]string, error) {
+func (p *Provisioner) Execute(ctx context.Context, commands []string) ([]string, error) {
 
 	var output []string
 
@@ -28,7 +28,7 @@ func (p *Provisioner) Execute(ctx context.Context, commands   []string) ([]strin
 			stdout, stderr, done, err = p.ssh.Run(command, p.Timeout)
 			log.Debug(ctx, "command: %s\ndone: %t\nstdout: %s\nstderr: %s\nerror: %s", command, done, stdout, stderr, err)
 			if err == nil {
-				output = append(output, stdout)
+				output = append(output, strings.TrimSuffix(stdout, "\n"))
 				break
 			}
 			if strings.Contains(err.Error(), "no supported methods remain") {
