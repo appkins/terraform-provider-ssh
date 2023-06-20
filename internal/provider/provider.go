@@ -11,21 +11,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/loafoe/easyssh-proxy/v2"
 )
 
 var (
 	_ provider.Provider = &frameworkProvider{}
 )
-
-type SshProviderModel struct {
-	Host       types.String `tfsdk:"host"`
-	Port       types.String `tfsdk:"port"`
-	User       types.String `tfsdk:"user"`
-	Password   types.String `tfsdk:"password"`
-	PrivateKey types.String `tfsdk:"private_key"`
-}
 
 func New() provider.Provider {
 	return &frameworkProvider{}
@@ -57,13 +48,16 @@ func (p *frameworkProvider) Schema(_ context.Context, _ provider.SchemaRequest, 
 				Optional:  true,
 				Sensitive: true,
 			},
+			"private_key_path": schema.StringAttribute{
+				Optional: true,
+			},
 		},
 	}
 }
 
 func (p *frameworkProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 
-	var config SshProviderModel
+	var config SshConfig
 	diags := req.Config.Get(ctx, &config)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -111,6 +105,7 @@ func (p *frameworkProvider) Configure(ctx context.Context, req provider.Configur
 	user := os.Getenv("SSH_USER")
 	password := os.Getenv("SSH_PASSWORD")
 	private_key := os.Getenv("SSH_PRIVATE_KEY")
+	private_key_path := os.Getenv("SSH_PRIVATE_KEY_PATH")
 
 	if !config.Host.IsNull() {
 		host = config.Host.ValueString()
@@ -128,36 +123,35 @@ func (p *frameworkProvider) Configure(ctx context.Context, req provider.Configur
 		private_key = config.PrivateKey.ValueString()
 	}
 
+	if !config.PrivateKeyPath.IsNull() {
+		private_key_path = config.PrivateKeyPath.ValueString()
+	}
+
 	// If any of the expected configurations are missing, return
 	// errors with provider-specific guidance.
 
 	if host == "" {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("host"),
-			"Missing HashiCups API Host",
-			"The provider cannot create the HashiCups API client as there is a missing or empty value for the HashiCups API host. "+
-				"Set the host value in the configuration or use the HASHICUPS_HOST environment variable. "+
+			"Missing SSH Host",
+			"The provider cannot create the SSH client as there is a missing or empty value for the SSH host. "+
+				"Set the host value in the configuration or use the SSH_HOST environment variable. "+
 				"If either is already set, ensure the value is not empty.",
 		)
 	}
 
 	if user == "" {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("username"),
-			"Missing HashiCups API User",
-			"The provider cannot create the HashiCups API client as there is a missing or empty value for the HashiCups API username. "+
-				"Set the username value in the configuration or use the HASHICUPS_USERNAME environment variable. "+
-				"If either is already set, ensure the value is not empty.",
-		)
+		user = "root"
 	}
 
-	if password == "" {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("password"),
-			"Missing HashiCups API Password",
-			"The provider cannot create the HashiCups API client as there is a missing or empty value for the HashiCups API password. "+
-				"Set the password value in the configuration or use the HASHICUPS_PASSWORD environment variable. "+
-				"If either is already set, ensure the value is not empty.",
+	if password == "" && private_key == "" && private_key_path == "" {
+		resp.Diagnostics.AddError(
+			"Missing Credentials",
+			"The provider cannot create the SSH client as no value is provided for password, private_key or private_key_path. "+
+				"Set the password value in the configuration or use the SSH_PASSWORD environment variable. "+
+				"Set the private_key value in the configuration or use the SSH_PASSWORD environment variable. "+
+				"Set the private_key_path value in the configuration or use the SSH_PASSWORD environment variable. "+
+				"If a value is already set, ensure the value is not empty.",
 		)
 	}
 
@@ -172,6 +166,7 @@ func (p *frameworkProvider) Configure(ctx context.Context, req provider.Configur
 		Server:   host,
 		Password: password,
 		Key:      private_key,
+		KeyPath:  private_key_path,
 	}, t1, t1)
 
 	//client := operator.NewSSHOperator()
