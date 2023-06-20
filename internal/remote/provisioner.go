@@ -1,30 +1,29 @@
 package remote
 
 import (
-	"context"
 	"time"
 
 	"github.com/loafoe/easyssh-proxy/v2"
 )
 
 type Provisioner struct {
-	Ssh        *easyssh.MakeConfig
+	*easyssh.MakeConfig
 	Timeout    time.Duration
 	RetryDelay time.Duration
 }
 
-func (p *Provisioner) Execute(commands []string, ctx context.Context) (string, error) {
-	return exec(ctx, p.RetryDelay, commands, p.Timeout, p.Ssh)
-}
-
-func (p *Provisioner) CopyFiles(files []File, ctx context.Context) error {
-	return copyFiles(ctx, p.RetryDelay, p.Ssh, files)
-}
-
-func NewProvisioner(ssh *easyssh.MakeConfig, timeout time.Duration, retryDelay time.Duration) *Provisioner {
+func NewProvisioner(config *Config) *Provisioner {
 	return &Provisioner{
-		Ssh:        ssh,
-		Timeout:    timeout,
-		RetryDelay: retryDelay,
+		MakeConfig: &easyssh.MakeConfig{
+			User:     config.User,
+			Server:   config.Host,
+			Port:     config.Port,
+			Timeout:  config.Timeout,
+			Password: config.Password,
+			Key:      config.PrivateKey,
+			KeyPath:  config.PrivateKeyPath,
+		},
+		Timeout:    config.Timeout,
+		RetryDelay: config.RetryDelay,
 	}
 }

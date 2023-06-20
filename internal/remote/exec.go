@@ -7,17 +7,25 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/loafoe/easyssh-proxy/v2"
 )
 
-func exec(ctx context.Context, retryDelay time.Duration, commands []string, timeout time.Duration, ssh *easyssh.MakeConfig) (string, error) {
+func (p *Provisioner) Execute(ctx context.Context, commands []string, config *Config) (string, error) {
+
+	ssh, _ := p.CreateClient(config)
+
+	retryDelay := p.RetryDelay
+
+	if config.RetryDelay != 0 {
+		retryDelay = config.RetryDelay
+	}
+
 	var stdout, stderr string
 	var done bool
 	var err error
 
 	for i := 0; i < len(commands); i++ {
 		for {
-			stdout, stderr, done, err = ssh.Run(commands[i], timeout)
+			stdout, stderr, done, err = ssh.Run(commands[i], config.Timeout)
 			tflog.Debug(ctx, commands[i], map[string]interface{}{"done": done, "stdout": stdout, "stderr": stderr, "error": err})
 			if err == nil {
 				break

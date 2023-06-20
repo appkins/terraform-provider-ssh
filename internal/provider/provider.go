@@ -11,7 +11,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/loafoe/easyssh-proxy/v2"
 )
 
 var (
@@ -32,13 +31,16 @@ func (p *frameworkProvider) Schema(_ context.Context, _ provider.SchemaRequest, 
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"host": schema.StringAttribute{
-				Required: true,
+				MarkdownDescription: "The host to connect to. This can be an IP address or a hostname.",
+				Required:            true,
 			},
 			"port": schema.StringAttribute{
-				Optional: true,
+				MarkdownDescription: "The port to connect to the remote host on. Defaults to `22`.",
+				Optional:            true,
 			},
 			"user": schema.StringAttribute{
-				Optional: true,
+				MarkdownDescription: "The user to connect to the remote host as. Defaults to `root`.",
+				Optional:            true,
 			},
 			"password": schema.StringAttribute{
 				Optional:  true,
@@ -101,11 +103,12 @@ func (p *frameworkProvider) Configure(ctx context.Context, req provider.Configur
 	// Default values to environment variables, but override
 	// with Terraform configuration value if set.
 
-	host := os.Getenv("SSH_HOST")
-	user := os.Getenv("SSH_USER")
-	password := os.Getenv("SSH_PASSWORD")
-	private_key := os.Getenv("SSH_PRIVATE_KEY")
-	private_key_path := os.Getenv("SSH_PRIVATE_KEY_PATH")
+	host, user, password, private_key, private_key_path :=
+		os.Getenv("SSH_HOST"),
+		os.Getenv("SSH_USER"),
+		os.Getenv("SSH_PASSWORD"),
+		os.Getenv("SSH_PRIVATE_KEY"),
+		os.Getenv("SSH_PRIVATE_KEY_PATH")
 
 	if !config.Host.IsNull() {
 		host = config.Host.ValueString()
@@ -160,14 +163,17 @@ func (p *frameworkProvider) Configure(ctx context.Context, req provider.Configur
 	}
 
 	t1, _ := time.ParseDuration("20s")
+	t2, _ := time.ParseDuration("20s")
 
-	client := remote.NewProvisioner(&easyssh.MakeConfig{
-		User:     user,
-		Server:   host,
-		Password: password,
-		Key:      private_key,
-		KeyPath:  private_key_path,
-	}, t1, t1)
+	client := remote.NewProvisioner(&remote.Config{
+		User:           user,
+		Host:           host,
+		Password:       password,
+		PrivateKey:     private_key,
+		PrivateKeyPath: private_key_path,
+		Timeout:        t1,
+		RetryDelay:     t2,
+	})
 
 	//client := operator.NewSSHOperator()
 

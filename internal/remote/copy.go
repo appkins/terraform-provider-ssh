@@ -8,10 +8,28 @@ import (
 	"time"
 
 	"github.com/appkins/terraform-provider-ssh/internal/log"
-	"github.com/loafoe/easyssh-proxy/v2"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-func copyFiles(ctx context.Context, retryDelay time.Duration, ssh *easyssh.MakeConfig, createFiles []File) error {
+type File struct {
+	Source      types.String `tfsdk:"source"`
+	Destination types.String `tfsdk:"destination"`
+	Content     types.String `tfsdk:"content"`
+	Permissions types.String `tfsdk:"permissions"`
+	Owner       types.String `tfsdk:"owner"`
+	Group       types.String `tfsdk:"group"`
+}
+
+func (p *Provisioner) CopyFiles(ctx context.Context, createFiles []File, config *Config) error {
+
+	ssh, _ := p.CreateClient(config)
+
+	retryDelay := p.RetryDelay
+
+	if config.RetryDelay != 0 {
+		retryDelay = config.RetryDelay
+	}
+
 	for _, f := range createFiles {
 		copyFile := func(f File) error {
 			if !f.Source.IsUnknown() {

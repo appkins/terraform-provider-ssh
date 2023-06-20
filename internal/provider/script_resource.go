@@ -181,8 +181,8 @@ func (r *ScriptResource) Create(ctx context.Context, req resource.CreateRequest,
 		})
 	}
 
-	r.client.CopyFiles(files, ctx)
-	r.client.Execute(scripts, ctx)
+	r.client.CopyFiles(ctx, files, nil)
+	r.client.Execute(ctx, scripts, nil)
 
 	data.Result = types.StringValue("script-id")
 
@@ -214,7 +214,7 @@ func (r *ScriptResource) Read(ctx context.Context, req resource.ReadRequest, res
 		}
 	}
 
-	if out, err := r.client.Execute(scripts, ctx); err != nil {
+	if out, err := r.client.Execute(ctx, scripts, nil); err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read script, got error: %s", err))
 	} else {
 		data.Result = types.StringValue(out)
@@ -243,7 +243,7 @@ func (r *ScriptResource) Update(ctx context.Context, req resource.UpdateRequest,
 		}
 	}
 
-	if out, err := r.client.Execute(scripts, ctx); err != nil {
+	if out, err := r.client.Execute(ctx, scripts, nil); err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read script, got error: %s", err))
 	} else {
 		log.Info(ctx, "Script output: %s", out)
@@ -272,7 +272,7 @@ func (r *ScriptResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		}
 	}
 
-	if out, err := r.client.Execute(scripts, ctx); err != nil {
+	if out, err := r.client.Execute(ctx, scripts, nil); err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete script, got error: %s", err))
 	} else {
 		log.Info(ctx, "Script output: %s", out)
