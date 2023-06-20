@@ -54,11 +54,11 @@ func (p *SshProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *
 			"private_key_path": schema.StringAttribute{
 				Optional: true,
 			},
-			"timeout": schema.NumberAttribute{
+			"timeout": schema.Int64Attribute{
 				MarkdownDescription: "Timeout in seconds",
 				Optional:            true,
 			},
-			"retry_delay": schema.NumberAttribute{
+			"retry_delay": schema.Int64Attribute{
 				MarkdownDescription: "Retry delay in seconds",
 				Optional:            true,
 			},
@@ -75,7 +75,7 @@ func (p *SshProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		return
 	}
 
-	cfg := GetSshConfig(config)
+	cfg := GetSshConfig(&config)
 
 	if host, found := os.LookupEnv("SSH_HOST"); found {
 		if cfg.Host == "" {
@@ -93,10 +93,10 @@ func (p *SshProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		cfg.Timeout = 20 * time.Second
 	}
 
-	client := remote.NewProvisioner(cfg)
+	factory := remote.NewFactory(cfg)
 
-	resp.DataSourceData = client
-	resp.ResourceData = client
+	resp.DataSourceData = factory
+	resp.ResourceData = factory
 }
 
 func (p *SshProvider) Resources(_ context.Context) []func() resource.Resource {

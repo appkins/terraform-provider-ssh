@@ -6,47 +6,48 @@ import (
 	"strings"
 	"time"
 
+	"github.com/appkins/terraform-provider-ssh/internal/log"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
-func (p *Provisioner) Execute(ctx context.Context, commands []string, config *Config) (string, error) {
+/**
+ * Provisioner is a struct that contains the SSH client and the retry delay.
+ * The SSH client is used to execute commands on the remote host.
+ * The retry delay is used to determine how long to wait before retrying a failed command.
+ */
+func (p *Provisioner) Execute(ctx context.Context, commands   []string) ([]string, error) {
 
-	ssh, _ := p.CreateClient(config)
-
-	retryDelay := p.RetryDelay
-
-	if config.RetryDelay != 0 {
-		retryDelay = config.RetryDelay
-	}
+	var output []string
 
 	var stdout, stderr string
 	var done bool
 	var err error
 
-	for i := 0; i < len(commands); i++ {
+	for _, command := range commands {
 		for {
-			stdout, stderr, done, err = ssh.Run(commands[i], config.Timeout)
-			tflog.Debug(ctx, commands[i], map[string]interface{}{"done": done, "stdout": stdout, "stderr": stderr, "error": err})
+			stdout, stderr, done, err = p.ssh.Run(command, p.Timeout)
+			log.Debug(ctx, "command: %s\ndone: %t\nstdout: %s\nstderr: %s\nerror: %s", command, done, stdout, stderr, err)
 			if err == nil {
+				output = append(output, stdout)
 				break
 			}
 			if strings.Contains(err.Error(), "no supported methods remain") {
-				return stdout, err
+				return output, err
 			}
 
 			select {
-			case <-time.After(retryDelay):
+			case <-time.After(p.RetryDelay):
 				// Retry
 
 			case <-ctx.Done():
 				tflog.Debug(ctx, fmt.Sprintf("error: %v\n", err))
-				tflog.Error(ctx, fmt.Sprintf("execution of command '%s' failed: %s: %s", commands[i], ctx.Err(), err))
+				tflog.Error(ctx, fmt.Sprintf("execution of command '%s' failed: %s: %s", command, ctx.Err(), err))
 				if stderr != "" {
-					return stdout, fmt.Errorf("stderr output: %s", stderr)
+					return output, fmt.Errorf("stderr output: %s", stderr)
 				}
-				return stdout, err
+				return output, err
 			}
 		}
 	}
-	return stdout, nil
+	return output, nil
 }

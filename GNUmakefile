@@ -1,7 +1,7 @@
 default: build
 
 build:
-	go build -v ./...
+	go build -o ~/.terraform.d/plugins/terraform.local/local/ssh/0.1.0/darwin_amd64/terraform-provider-ssh
 
 install: build
 	go install -v ./...

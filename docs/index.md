@@ -17,11 +17,14 @@ description: |-
 
 ### Required
 
-- `host` (String)
+- `host` (String) The host to connect to. This can be an IP address or a hostname.
 
 ### Optional
 
 - `password` (String, Sensitive)
-- `port` (String)
+- `port` (String) The port to connect to the remote host on. Defaults to `22`.
 - `private_key` (String, Sensitive)
-- `user` (String)
+- `private_key_path` (String)
+- `retry_delay` (Number) Retry delay in seconds
+- `timeout` (Number) Timeout in seconds
+- `user` (String) The user to connect to the remote host as. Defaults to `root`.

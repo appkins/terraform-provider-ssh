@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/appkins/terraform-provider-ssh/internal/remote"
-	dschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -20,54 +19,19 @@ type SshConfig struct {
 	RetryDelay     types.Int64  `tfsdk:"retry_delay"`
 }
 
-var SshDatasourceBlock = map[string]dschema.Block{
-	"ssh": dschema.SingleNestedBlock{
-		Attributes: map[string]dschema.Attribute{
-			"host": dschema.StringAttribute{
-				MarkdownDescription: "SSH host",
-				Optional:            true,
-			},
-			"port": dschema.StringAttribute{
-				MarkdownDescription: "SSH port",
-				Optional:            true,
-			},
-			"user": dschema.StringAttribute{
-				MarkdownDescription: "SSH user",
-				Optional:            true,
-			},
-			"password": dschema.StringAttribute{
-				MarkdownDescription: "SSH password",
-				Optional:            true,
-				Sensitive:           true,
-			},
-			"private_key": dschema.StringAttribute{
-				MarkdownDescription: "SSH private key data",
-				Optional:            true,
-				Sensitive:           true,
-			},
-			"private_key_path": dschema.StringAttribute{
-				MarkdownDescription: "Path to SSH private key",
-				Optional:            true,
-			},
-			"timeout": dschema.StringAttribute{
-				MarkdownDescription: "Timeout",
-				Optional:            true,
-			},
-			"retry_delay": dschema.StringAttribute{
-				MarkdownDescription: "Retry delay",
-				Optional:            true,
-			},
-		},
-	},
-}
+func GetSshConfig(config *SshConfig) *remote.Config {
 
-func GetSshConfig(config SshConfig) *remote.Config {
+	if config == nil {
+		return &remote.Config{}
+	}
+
 	cfg := &remote.Config{
-		Host:       config.Host.ValueString(),
-		Port:       config.Port.ValueString(),
-		User:       config.User.ValueString(),
-		Password:   config.Password.ValueString(),
-		PrivateKey: config.PrivateKey.ValueString(),
+		Host:           config.Host.ValueString(),
+		Port:           config.Port.ValueString(),
+		User:           config.User.ValueString(),
+		Password:       config.Password.ValueString(),
+		PrivateKey:     config.PrivateKey.ValueString(),
+		PrivateKeyPath: config.PrivateKeyPath.ValueString(),
 	}
 
 	if !config.Timeout.IsUnknown() && !config.Timeout.IsNull() {

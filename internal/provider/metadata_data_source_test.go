@@ -15,7 +15,7 @@ func TestMetadataDataSource(t *testing.T) {
 			{
 				Config: testMetadataDataSourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("data.ssh_metadata.test", "id", "example-id"),
+					resource.TestCheckResourceAttr("data.ssh_metadata.test.ssh", "host", "localhost"),
 				),
 			},
 		},
@@ -24,6 +24,8 @@ func TestMetadataDataSource(t *testing.T) {
 
 const testMetadataDataSourceConfig = `
 data "ssh_metadata" "test" {
-  configurable_attribute = "example"
+  ssh {
+    host = "localhost"
+  }
 }
 `

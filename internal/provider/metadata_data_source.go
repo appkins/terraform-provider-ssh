@@ -15,28 +15,27 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ datasource.DataSource = &MetadataDataSource{}
 
-var (
-	cmds = []string{
-		"hostname",
-		"ip a | grep global | grep -v '10.0.2.15' | awk '{print $2}' | cut -f1 -d '/' | paste -s -d, -",
-	}
-)
-
 func NewMetadataDataSource() datasource.DataSource {
 	return &MetadataDataSource{}
 }
 
 // MetadataDataSource defines the data source implementation.
 type MetadataDataSource struct {
-	client *remote.Provisioner
+	factory *remote.ProvisionerFactory
 }
 
 // MetadataDataSourceModel describes the data source data model.
 type MetadataDataSourceModel struct {
-	Ssh         SshConfig      `tfsdk:"configurable_attribute"`
+	Ssh         *SshConfig     `tfsdk:"ssh"`
 	HostName    types.String   `tfsdk:"hostname"`
 	IpAddress   types.String   `tfsdk:"ip_address"`
 	IpAddresses []types.String `tfsdk:"ip_addresses"`
+	Os          struct {
+		Name    types.String `tfsdk:"name"`
+		Version types.String `tfsdk:"version"`
+		Family  types.String `tfsdk:"family"`
+	} `tfsdk:"os"`
+	Raw types.String `tfsdk:"raw"`
 }
 
 func (d *MetadataDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -49,9 +48,9 @@ func (d *MetadataDataSource) Schema(ctx context.Context, req datasource.SchemaRe
 		MarkdownDescription: "Metadata data source",
 
 		Attributes: map[string]schema.Attribute{
-			"ssh": schema.StringAttribute{
-				MarkdownDescription: "Metadata configurable attribute",
-				Optional:            true,
+			"raw": schema.StringAttribute{
+				MarkdownDescription: "Raw output from metadata commands.",
+				Computed:            true,
 			},
 			"hostname": schema.StringAttribute{
 				MarkdownDescription: "Metadata identifier",
@@ -66,8 +65,65 @@ func (d *MetadataDataSource) Schema(ctx context.Context, req datasource.SchemaRe
 				MarkdownDescription: "All available private addresses of the host.",
 				Computed:            true,
 			},
+			"os": schema.SingleNestedAttribute{
+				MarkdownDescription: "Operating system metadata",
+				Computed:            true,
+				Attributes: map[string]schema.Attribute{
+					"name": schema.StringAttribute{
+						MarkdownDescription: "Operating system name",
+						Computed:            true,
+					},
+					"version": schema.StringAttribute{
+						MarkdownDescription: "Operating system version",
+						Computed:            true,
+					},
+					"family": schema.StringAttribute{
+						MarkdownDescription: "Operating system family",
+						Computed:            true,
+					},
+				},
+			},
 		},
-		Blocks: SshDatasourceBlock,
+		Blocks: map[string]schema.Block{
+			"ssh": schema.SingleNestedBlock{
+				Attributes: map[string]schema.Attribute{
+					"host": schema.StringAttribute{
+						MarkdownDescription: "SSH host",
+						Optional:            true,
+					},
+					"port": schema.StringAttribute{
+						MarkdownDescription: "SSH port",
+						Optional:            true,
+					},
+					"user": schema.StringAttribute{
+						MarkdownDescription: "SSH user",
+						Optional:            true,
+					},
+					"password": schema.StringAttribute{
+						MarkdownDescription: "SSH password",
+						Optional:            true,
+						Sensitive:           true,
+					},
+					"private_key": schema.StringAttribute{
+						MarkdownDescription: "SSH private key data",
+						Optional:            true,
+						Sensitive:           true,
+					},
+					"private_key_path": schema.StringAttribute{
+						MarkdownDescription: "Path to SSH private key",
+						Optional:            true,
+					},
+					"timeout": schema.Int64Attribute{
+						MarkdownDescription: "Timeout",
+						Optional:            true,
+					},
+					"retry_delay": schema.Int64Attribute{
+						MarkdownDescription: "Retry delay",
+						Optional:            true,
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -77,13 +133,13 @@ func (d *MetadataDataSource) Configure(ctx context.Context, req datasource.Confi
 		return
 	}
 
-	if client, ok := req.ProviderData.(*remote.Provisioner); !ok {
+	if factory, ok := req.ProviderData.(*remote.ProvisionerFactory); !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
 			fmt.Sprintf("Expected *http.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 	} else {
-		d.client = client
+		d.factory = factory
 	}
 }
 
@@ -97,35 +153,72 @@ func (d *MetadataDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	stdOut, err := d.client.Execute(ctx, cmds, GetSshConfig(data.Ssh))
-
+	client, err := d.factory.Create(GetSshConfig(data.Ssh))
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read metadata, got error: %s", err))
+		resp.Diagnostics.AddError(
+			"Failed to create SSH client",
+			fmt.Sprintf("Failed to create SSH client: %s", err.Error()),
+		)
 		return
 	}
 
-	for i, line := range strings.Split(stdOut, "\n") {
-		switch i {
-		case 0:
-			data.HostName = types.StringValue(line)
-		case 1:
-			{
-				if len(line) == 0 {
-					break
-				}
-				if strings.Contains(line, ",") {
-					ipaddresses := make([]types.String, 0)
-					for i, ip := range strings.Split(line, ",") {
-						if i == 0 {
-							data.IpAddress = types.StringValue(ip)
-						}
-						ipaddresses = append(ipaddresses, types.StringValue(ip))
+	cmds := []string{
+		"hostname",
+		"ip a | grep global | grep -v '10.0.2.15' | awk '{print $2}' | cut -f1 -d '/' | paste -s -d, -",
+		"lsb_release -d | awk '{print $2} {print $3} {print $4}'",
+	}
+
+	if stdOut, err := client.Execute(ctx, cmds); err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to execute command",
+			fmt.Sprintf("Failed to execute command: %s", err.Error()),
+		)
+		return
+	} else {
+		rawb := new(strings.Builder)
+		for i, line := range stdOut {
+			rawb.WriteString(line)
+			switch i {
+			case 0:
+				data.HostName = types.StringValue(line)
+			case 1:
+				{
+					if len(line) == 0 {
+						break
 					}
-					data.IpAddresses = ipaddresses
-					break
+					if strings.Contains(line, ",") {
+						ipaddresses := make([]types.String, 0)
+						for i, ip := range strings.Split(line, ",") {
+							if i == 0 {
+								data.IpAddress = types.StringValue(ip)
+							}
+							ipaddresses = append(ipaddresses, types.StringValue(ip))
+						}
+						data.IpAddresses = ipaddresses
+						break
+					}
+				}
+			case 2:
+				{
+					if len(line) == 0 {
+						break
+					}
+					if strings.Contains(line, "\n") {
+						for ii, l := range strings.Split(line, "\n") {
+							switch ii {
+							case 0:
+								data.Os.Name = types.StringValue(l)
+							case 1:
+								data.Os.Version = types.StringValue(l)
+							case 2:
+								data.Os.Family = types.StringValue(l)
+							}
+						}
+					}
 				}
 			}
 		}
+		data.Raw = types.StringValue(rawb.String())
 	}
 
 	// Write logs using the tflog package

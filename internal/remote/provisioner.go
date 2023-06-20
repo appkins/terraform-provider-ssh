@@ -7,14 +7,14 @@ import (
 )
 
 type Provisioner struct {
-	*easyssh.MakeConfig
+	ssh        *easyssh.MakeConfig
 	Timeout    time.Duration
 	RetryDelay time.Duration
 }
 
-func NewProvisioner(config *Config) *Provisioner {
+func NewProvisioner(config *Config) (*Provisioner, error) {
 	return &Provisioner{
-		MakeConfig: &easyssh.MakeConfig{
+		ssh: &easyssh.MakeConfig{
 			User:     config.User,
 			Server:   config.Host,
 			Port:     config.Port,
@@ -25,5 +25,5 @@ func NewProvisioner(config *Config) *Provisioner {
 		},
 		Timeout:    config.Timeout,
 		RetryDelay: config.RetryDelay,
-	}
+	}, nil
 }

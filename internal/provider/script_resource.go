@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/appkins/terraform-provider-ssh/internal/log"
 	"github.com/appkins/terraform-provider-ssh/internal/remote"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -12,6 +11,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+)
+
+const (
+	Destroy = "destroy"
+	Create  = "create"
+	Update  = "update"
+	Read    = "read"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -24,7 +30,7 @@ func NewScriptResource() resource.Resource {
 
 // ScriptResource defines the resource implementation.
 type ScriptResource struct {
-	client *remote.Provisioner
+	factory *remote.ProvisionerFactory
 }
 
 // ScriptResourceModel describes the resource data model.
@@ -47,7 +53,14 @@ type ScriptResourceModel struct {
 		Owner       types.String `tfsdk:"owner"`
 		Group       types.String `tfsdk:"group"`
 	} `tfsdk:"file"`
-	Result types.String `tfsdk:"result"`
+	Ssh *SshConfig `tfsdk:"ssh"`
+
+	Result struct {
+		Read    []types.String `tfsdk:"read"`
+		Update  []types.String `tfsdk:"update"`
+		Create  []types.String `tfsdk:"create"`
+		Destroy []types.String `tfsdk:"destroy"`
+	} `tfsdk:"result"`
 }
 
 func (r *ScriptResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -77,9 +90,26 @@ func (r *ScriptResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				Computed:            true,
 				Default:             stringdefault.StaticString("10s"),
 			},
-			"result": schema.StringAttribute{
-				Computed:  true,
-				Sensitive: true,
+			"result": schema.SingleNestedAttribute{
+				Computed: true,
+				Attributes: map[string]schema.Attribute{
+					Read: schema.ListAttribute{
+						ElementType: types.StringType,
+						Computed:    true,
+					},
+					Update: schema.ListAttribute{
+						ElementType: types.StringType,
+						Computed:    true,
+					},
+					Create: schema.ListAttribute{
+						ElementType: types.StringType,
+						Computed:    true,
+					},
+					Destroy: schema.ListAttribute{
+						ElementType: types.StringType,
+						Computed:    true,
+					},
+				},
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -126,6 +156,44 @@ func (r *ScriptResource) Schema(ctx context.Context, req resource.SchemaRequest,
 					},
 				},
 			},
+			"ssh": schema.SingleNestedBlock{
+				Attributes: map[string]schema.Attribute{
+					"host": schema.StringAttribute{
+						MarkdownDescription: "SSH host",
+						Optional:            true,
+					},
+					"port": schema.StringAttribute{
+						MarkdownDescription: "SSH port",
+						Optional:            true,
+					},
+					"user": schema.StringAttribute{
+						MarkdownDescription: "SSH user",
+						Optional:            true,
+					},
+					"password": schema.StringAttribute{
+						MarkdownDescription: "SSH password",
+						Optional:            true,
+						Sensitive:           true,
+					},
+					"private_key": schema.StringAttribute{
+						MarkdownDescription: "SSH private key data",
+						Optional:            true,
+						Sensitive:           true,
+					},
+					"private_key_path": schema.StringAttribute{
+						MarkdownDescription: "Path to SSH private key",
+						Optional:            true,
+					},
+					"timeout": schema.Int64Attribute{
+						MarkdownDescription: "Timeout",
+						Optional:            true,
+					},
+					"retry_delay": schema.Int64Attribute{
+						MarkdownDescription: "Retry delay",
+						Optional:            true,
+					},
+				},
+			},
 		},
 	}
 }
@@ -136,34 +204,40 @@ func (r *ScriptResource) Configure(ctx context.Context, req resource.ConfigureRe
 		return
 	}
 
-	if client, ok := req.ProviderData.(*remote.Provisioner); !ok {
+	if factory, ok := req.ProviderData.(*remote.ProvisionerFactory); !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
 			fmt.Sprintf("Expected *http.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 	} else {
-		r.client = client
+		r.factory = factory
 	}
 }
 
 func (r *ScriptResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var saved *ScriptResourceModel
 	var data *ScriptResourceModel
 
 	// Read Terraform plan data into the model
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &saved)...)
-
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	scripts := make([]string, 0)
-	files := make([]remote.File, 0)
+	client, err := r.factory.Create(GetSshConfig(data.Ssh))
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to create SSH client",
+			fmt.Sprintf("Failed to create SSH client: %s", err.Error()),
+		)
+		return
+	}
+
+	var scripts []string
+	var files []remote.File
 
 	for _, e := range data.Exec {
-		if e.Lifecycle.String() == "create" {
+		if e.Lifecycle.String() == Create {
 			for _, c := range e.Commands {
 				scripts = append(scripts, c.String())
 			}
@@ -181,10 +255,26 @@ func (r *ScriptResource) Create(ctx context.Context, req resource.CreateRequest,
 		})
 	}
 
-	r.client.CopyFiles(ctx, files, nil)
-	r.client.Execute(ctx, scripts, nil)
+	if err := client.CopyFiles(ctx, files); err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to copy files",
+			fmt.Sprintf("Failed to copy files: %s", err.Error()),
+		)
+		return
+	}
 
-	data.Result = types.StringValue("script-id")
+	if out, err := client.Execute(ctx, scripts); err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to execute script",
+			fmt.Sprintf("Failed to execute script: %s", err.Error()),
+		)
+	} else {
+		var outVals []types.String
+		for _, o := range out {
+			outVals = append(outVals, types.StringValue(o))
+		}
+		data.Result.Create = outVals
+	}
 
 	// Write logs using the tflog package
 	// Documentation: https://terraform.io/plugin/log
@@ -207,17 +297,30 @@ func (r *ScriptResource) Read(ctx context.Context, req resource.ReadRequest, res
 	scripts := make([]string, 0)
 
 	for _, e := range data.Exec {
-		if e.Lifecycle.String() == "read" {
+		if e.Lifecycle.ValueString() == "read" {
 			for _, c := range e.Commands {
 				scripts = append(scripts, c.String())
 			}
 		}
 	}
 
-	if out, err := r.client.Execute(ctx, scripts, nil); err != nil {
+	client, err := r.factory.Create(GetSshConfig(data.Ssh))
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to create SSH client",
+			fmt.Sprintf("Failed to create SSH client: %s", err.Error()),
+		)
+		return
+	}
+
+	if out, err := client.Execute(ctx, scripts); err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read script, got error: %s", err))
 	} else {
-		data.Result = types.StringValue(out)
+		var outVals []types.String
+		for _, o := range out {
+			outVals = append(outVals, types.StringValue(o))
+		}
+		data.Result.Read = outVals
 	}
 
 	// Save updated data into Terraform state
@@ -234,19 +337,32 @@ func (r *ScriptResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
+	client, err := r.factory.Create(GetSshConfig(data.Ssh))
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to create SSH client",
+			fmt.Sprintf("Failed to create SSH client: %s", err.Error()),
+		)
+		return
+	}
+
 	scripts := make([]string, 0)
 	for _, e := range data.Exec {
-		if e.Lifecycle.String() == "update" {
+		if e.Lifecycle.ValueString() == Update {
 			for _, c := range e.Commands {
 				scripts = append(scripts, c.String())
 			}
 		}
 	}
 
-	if out, err := r.client.Execute(ctx, scripts, nil); err != nil {
+	if out, err := client.Execute(ctx, scripts); err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read script, got error: %s", err))
 	} else {
-		log.Info(ctx, "Script output: %s", out)
+		var outVals []types.String
+		for _, o := range out {
+			outVals = append(outVals, types.StringValue(o))
+		}
+		data.Result.Update = outVals
 	}
 
 	// Save updated data into Terraform state
@@ -263,19 +379,32 @@ func (r *ScriptResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 
+	client, err := r.factory.Create(GetSshConfig(data.Ssh))
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to create SSH client",
+			fmt.Sprintf("Failed to create SSH client: %s", err.Error()),
+		)
+		return
+	}
+
 	scripts := make([]string, 0)
 	for _, e := range data.Exec {
-		if e.Lifecycle.String() == "destroy" {
+		if e.Lifecycle.String() == Destroy {
 			for _, c := range e.Commands {
 				scripts = append(scripts, c.String())
 			}
 		}
 	}
 
-	if out, err := r.client.Execute(ctx, scripts, nil); err != nil {
+	if out, err := client.Execute(ctx, scripts); err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete script, got error: %s", err))
 	} else {
-		log.Info(ctx, "Script output: %s", out)
+		var outVals []types.String
+		for _, o := range out {
+			outVals = append(outVals, types.StringValue(o))
+		}
+		data.Result.Create = outVals
 	}
 }
 
