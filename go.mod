@@ -8,7 +8,7 @@ require (
 	github.com/hashicorp/terraform-plugin-log v0.9.0
 	github.com/loafoe/easyssh-proxy/v2 v2.0.4
 	github.com/yahoo/vssh v0.0.0-20201122023451-bfa903e660fc
-	golang.org/x/crypto v0.10.0
+	golang.org/x/crypto v0.13.0
 )
 
 require (
@@ -58,8 +58,8 @@ require (
 	github.com/zclconf/go-cty v1.13.2 // indirect
 	golang.org/x/mod v0.10.0 // indirect
 	golang.org/x/net v0.10.0 // indirect
-	golang.org/x/sys v0.9.0 // indirect
-	golang.org/x/text v0.10.0 // indirect
+	golang.org/x/sys v0.12.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 	google.golang.org/genproto v0.0.0-20230110181048-76db0878b65f // indirect
 	google.golang.org/grpc v1.54.0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
