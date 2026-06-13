@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/appkins/terraform-provider-ssh/internal/remote"
+	"github.com/appkins/terraform-provider-ssh/internal/ssh"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -32,7 +33,7 @@ type MetadataOs struct {
 
 // MetadataDataSourceModel describes the data source data model.
 type MetadataDataSourceModel struct {
-	Ssh         *SshConfig     `tfsdk:"ssh"`
+	Ssh         *ssh.Config    `tfsdk:"ssh"`
 	HostName    types.String   `tfsdk:"hostname"`
 	IpAddress   types.String   `tfsdk:"ip_address"`
 	IpAddresses []types.String `tfsdk:"ip_addresses"`
@@ -96,7 +97,7 @@ func (d *MetadataDataSource) Schema(ctx context.Context, req datasource.SchemaRe
 						MarkdownDescription: "SSH host",
 						Optional:            true,
 					},
-					"port": schema.StringAttribute{
+					"port": schema.Int64Attribute{
 						MarkdownDescription: "SSH port",
 						Optional:            true,
 					},
@@ -158,7 +159,7 @@ func (d *MetadataDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	client, err := d.factory.Create(GetSshConfig(data.Ssh))
+	client, err := d.factory.Create(ctx, data.Ssh)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to create SSH client",
@@ -173,7 +174,7 @@ func (d *MetadataDataSource) Read(ctx context.Context, req datasource.ReadReques
 		"lsb_release -d | awk '{print $2} {print $3} {print $4}'",
 	}
 
-	if stdOut, err := client.Execute(ctx, cmds); err != nil {
+	if stdOut, err := client.Execute(cmds); err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to execute command",
 			fmt.Sprintf("Failed to execute command: %s", err.Error()),

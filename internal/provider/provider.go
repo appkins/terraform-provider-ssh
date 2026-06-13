@@ -5,11 +5,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/appkins/terraform-provider-ssh/internal/remote"
+	"github.com/appkins/terraform-provider-ssh/internal/ssh"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 var (
@@ -33,9 +34,9 @@ func (p *SshProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *
 		Attributes: map[string]schema.Attribute{
 			"host": schema.StringAttribute{
 				MarkdownDescription: "The host to connect to. This can be an IP address or a hostname.",
-				Required:            true,
+				Optional:            true,
 			},
-			"port": schema.StringAttribute{
+			"port": schema.Int64Attribute{
 				MarkdownDescription: "The port to connect to the remote host on. Defaults to `22`.",
 				Optional:            true,
 			},
@@ -68,32 +69,30 @@ func (p *SshProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *
 
 func (p *SshProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 
-	var config SshConfig
+	var config ssh.Config
 	diags := req.Config.Get(ctx, &config)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	cfg := GetSshConfig(&config)
-
 	if host, found := os.LookupEnv("SSH_HOST"); found {
-		if cfg.Host == "" {
-			cfg.Host = host
+		if config.Host.ValueString() == "" {
+			config.Host = types.StringValue(host)
 		}
 	}
 
 	if user, found := os.LookupEnv("SSH_USER"); found {
-		if cfg.User == "" {
-			cfg.User = user
+		if config.User.ValueString() == "" {
+			config.User = types.StringValue(user)
 		}
 	}
 
-	if cfg.Timeout == 0 {
-		cfg.Timeout = 20 * time.Second
+	if config.Timeout.ValueInt64() == 0 {
+		config.Timeout = types.Int64Value(int64(20 * time.Second))
 	}
 
-	factory := remote.NewFactory(cfg)
+	factory := ssh.NewFactory(config)
 
 	resp.DataSourceData = factory
 	resp.ResourceData = factory
@@ -102,12 +101,14 @@ func (p *SshProvider) Configure(ctx context.Context, req provider.ConfigureReque
 func (p *SshProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewScriptResource,
+		NewFileResource,
 	}
 }
 
 func (p *SshProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewMetadataDataSource,
+		NewFileDataSource,
 	}
 }
 

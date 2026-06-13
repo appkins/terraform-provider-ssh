@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/appkins/terraform-provider-ssh/internal/remote"
+	"github.com/appkins/terraform-provider-ssh/internal/ssh"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -20,12 +20,12 @@ func NewFileDataSource() datasource.DataSource {
 
 // FileDataSource defines the data source implementation.
 type FileDataSource struct {
-	factory *remote.ProvisionerFactory
+	factory *ssh.Factory
 }
 
 // FileDataSourceModel describes the data source data model.
 type FileDataSourceModel struct {
-	Ssh     *SshConfig   `tfsdk:"ssh"`
+	Ssh     *ssh.Config  `tfsdk:"ssh"`
 	Path    types.String `tfsdk:"path"`
 	Content types.String `tfsdk:"content"`
 }
@@ -42,6 +42,7 @@ func (d *FileDataSource) Schema(ctx context.Context, req datasource.SchemaReques
 		Attributes: map[string]schema.Attribute{
 			"path": schema.StringAttribute{
 				MarkdownDescription: "File identifier",
+				Required:            true,
 			},
 			"content": schema.StringAttribute{
 				MarkdownDescription: "File data.",
@@ -55,7 +56,7 @@ func (d *FileDataSource) Schema(ctx context.Context, req datasource.SchemaReques
 						MarkdownDescription: "SSH host",
 						Optional:            true,
 					},
-					"port": schema.StringAttribute{
+					"port": schema.Int64Attribute{
 						MarkdownDescription: "SSH port",
 						Optional:            true,
 					},
@@ -96,7 +97,7 @@ func (d *FileDataSource) Configure(ctx context.Context, req datasource.Configure
 		return
 	}
 
-	if factory, ok := req.ProviderData.(*remote.ProvisionerFactory); !ok {
+	if factory, ok := req.ProviderData.(*ssh.Factory); !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
 			fmt.Sprintf("Expected *http.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
@@ -116,7 +117,7 @@ func (d *FileDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		return
 	}
 
-	client, err := d.factory.Create(GetSshConfig(data.Ssh))
+	client, err := d.factory.Create(*data.Ssh)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to create SSH client",
@@ -127,15 +128,11 @@ func (d *FileDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 
 	path := data.Path.ValueString()
 
-	readCmds := []string{
-		fmt.Sprintf("cat %s", path),
-	}
-
-	if stdOut, err := client.Execute(ctx, readCmds); err != nil {
+	if stdOut, err := client.Exec(fmt.Sprintf("cat %s", path)); err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read file, got error: %s", err))
 		return
 	} else if len(stdOut) > 0 {
-		data.Content = types.StringValue(stdOut[0])
+		data.Content = types.StringValue(stdOut)
 	}
 
 	if err != nil {
